@@ -1,0 +1,7 @@
+{
+  "name": "AuraFrame Studio",
+  "description": "An advanced content creation suite leveraging Gemini to generate and edit stylized videos and images, analyze content, and interact with AI through chat and real-time conversation.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
