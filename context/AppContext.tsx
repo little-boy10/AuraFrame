@@ -95,6 +95,7 @@ interface AppState {
         messages: ChatMessage[];
         input: string;
         isLoading: boolean;
+        stagedFile: File | null;
     };
 }
 
@@ -189,6 +190,7 @@ const initialState: AppState = {
         messages: [{ role: 'model', text: 'Hi! How can I help you with your content creation today?' }],
         input: '',
         isLoading: false,
+        stagedFile: null,
     },
 };
 

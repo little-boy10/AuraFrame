@@ -1,3 +1,4 @@
+// Fix: Replaced incorrect component code with actual type definitions.
 export enum AppTab {
   SCENE_CREATOR = 'Scene Creator',
   IMAGE_STUDIO = 'Image Studio',
@@ -10,48 +11,50 @@ export enum AppTab {
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
-export type VideoResolution = '1080p' | '720p' | '4k' | '8k';
+export type VideoResolution = '720p' | '1080p' | '4k' | '8k';
+export type VideoGenerationStyle = 'photorealistic' | 'cinematic' | 'vibrant' | 'minimalist' | 'documentary' | 'vintage';
+export type CameraMovement = 'Static Shot' | 'Pan Left' | 'Pan Right' | 'Tilt Up' | 'Tilt Down' | 'Zoom In' | 'Zoom Out' | 'Dolly Zoom' | 'Tracking Shot';
 
-export type ChatMessage = {
+export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
-};
+  file?: {
+    name: string;
+    type: string;
+    dataUrl: string;
+  };
+}
 
 export type HistoryItemType = 'image' | 'video' | 'audio' | 'text';
 
 export interface HistoryItem {
   id: number;
+  timestamp: string;
   type: HistoryItemType;
   prompt: string;
-  data: string; // URL for image/video/audio, text for text
-  timestamp: string;
-  metadata?: Record<string, any>;
-  operation?: any; // For long-running operations like video
+  data: string; // URL or text content
+  metadata?: any;
+  operation?: any; // For video polling
 }
-
-export type VideoGenerationStyle = 'cinematic' | 'vibrant' | 'minimalist' | 'documentary' | 'vintage' | 'photorealistic';
-export type CameraMovement = 'Static Shot' | 'Pan Left' | 'Pan Right' | 'Tilt Up' | 'Tilt Down' | 'Zoom In' | 'Zoom Out' | 'Dolly Zoom' | 'Tracking Shot';
 
 export interface Clip {
   id: string;
   historyItemId: number;
-  type: HistoryItemType;
-  source: string; // URL
-  name: string; // From history item prompt
+  type: 'video' | 'audio';
+  source: string; // data URL
+  name: string;
   duration: number; // in seconds
-  volume: number; // From 0 to 1
+  volume: number;
   effects?: {
-    blur?: number; // in pixels
-    grayscale?: number; // 0 to 1
-    brightness?: number; // 0 to 2 (1 is default)
-    contrast?: number; // 0 to 2 (1 is default)
-    saturate?: number; // 0 to 2 (1 is default)
-  }
+      blur?: number;
+      grayscale?: number;
+      brightness?: number;
+      contrast?: number;
+      saturate?: number;
+  };
 }
 
-export type TimelineTrack = Clip[];
-
 export interface TimelineState {
-  video: TimelineTrack;
-  audio: TimelineTrack;
+  video: Clip[];
+  audio: Clip[];
 }
