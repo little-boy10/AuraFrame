@@ -1,4 +1,3 @@
-
 export enum AppTab {
   SCENE_CREATOR = 'Scene Creator',
   IMAGE_STUDIO = 'Image Studio',
@@ -40,6 +39,12 @@ export interface Clip {
   source: string; // URL
   name: string; // From history item prompt
   duration: number; // in seconds
+  volume: number; // From 0 to 1
 }
 
 export type TimelineTrack = Clip[];
+
+export interface TimelineState {
+  video: TimelineTrack;
+  audio: TimelineTrack;
+}

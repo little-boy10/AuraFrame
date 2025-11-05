@@ -1,6 +1,5 @@
-
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { AppTab, AspectRatio, ChatMessage, HistoryItem, HistoryItemType, VideoResolution, VideoGenerationStyle, CameraMovement, TimelineTrack, Clip } from '../types';
+import { AppTab, AspectRatio, ChatMessage, HistoryItem, HistoryItemType, VideoResolution, VideoGenerationStyle, CameraMovement, TimelineState, Clip } from '../types';
 import { getHistory } from '../services/historyService';
 
 export interface CustomVoice {
@@ -56,12 +55,13 @@ interface AppState {
         }
     };
     videoEditor: {
-        timeline: TimelineTrack;
+        timeline: TimelineState;
         history: {
-            past: TimelineTrack[];
-            future: TimelineTrack[];
+            past: TimelineState[];
+            future: TimelineState[];
         };
         selectedClipId: string | null;
+        playheadPosition: number; // in seconds
     };
     scriptWriter: {
         topic: string;
@@ -146,12 +146,16 @@ const initialState: AppState = {
         },
     },
     videoEditor: {
-        timeline: [],
+        timeline: {
+            video: [],
+            audio: [],
+        },
         history: {
             past: [],
             future: [],
         },
         selectedClipId: null,
+        playheadPosition: 0,
     },
     scriptWriter: {
         topic: 'The history of video games',
@@ -192,11 +196,15 @@ const initialState: AppState = {
 interface AppContextType {
     appState: AppState;
     setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-    addClipToTimeline: (clip: Omit<Clip, 'id'>) => void;
+    // Video Editor Actions
+    addClipToTimeline: (clip: Omit<Clip, 'id' | 'volume'>) => void;
     deleteClipFromTimeline: (clipId: string) => void;
     selectClip: (clipId: string | null) => void;
     undo: () => void;
     redo: () => void;
+    setPlayheadPosition: (position: number) => void;
+    splitClip: () => void;
+    updateClipProperties: (clipId: string, updates: Partial<Clip>) => void;
 }
 
 // Create the context
@@ -212,20 +220,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setAppState(prev => ({ ...prev, history: { ...prev.history, items: loadedHistory } }));
     }, []);
 
-    const addClipToTimeline = (clip: Omit<Clip, 'id'>) => {
-        const newClip = { ...clip, id: `clip-${Date.now()}` };
+    // --- Video Editor Actions ---
+
+    const addClipToTimeline = (clip: Omit<Clip, 'id' | 'volume'>) => {
+        const newClip: Clip = { ...clip, id: `clip-${Date.now()}`, volume: 1 };
+        
         setAppState(prev => {
-            const newTimeline = [...prev.videoEditor.timeline, newClip];
-            const newPast = [...prev.videoEditor.history.past, prev.videoEditor.timeline];
+            const currentTimeline = prev.videoEditor.timeline;
+            const newPast = [...prev.videoEditor.history.past, currentTimeline];
+            
+            let newTimeline: TimelineState;
+            if (newClip.type === 'video') {
+                newTimeline = { ...currentTimeline, video: [...currentTimeline.video, newClip] };
+            } else {
+                newTimeline = { ...currentTimeline, audio: [...currentTimeline.audio, newClip] };
+            }
+
             return {
                 ...prev,
                 videoEditor: {
                     ...prev.videoEditor,
                     timeline: newTimeline,
-                    history: {
-                        past: newPast,
-                        future: []
-                    }
+                    history: { past: newPast, future: [] }
                 }
             };
         });
@@ -233,19 +249,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const deleteClipFromTimeline = (clipId: string) => {
         setAppState(prev => {
-            const newTimeline = prev.videoEditor.timeline.filter(c => c.id !== clipId);
+            const currentTimeline = prev.videoEditor.timeline;
+            const newPast = [...prev.videoEditor.history.past, currentTimeline];
+
+            const newTimeline: TimelineState = {
+                video: currentTimeline.video.filter(c => c.id !== clipId),
+                audio: currentTimeline.audio.filter(c => c.id !== clipId),
+            };
+
             const newSelectedClipId = prev.videoEditor.selectedClipId === clipId ? null : prev.videoEditor.selectedClipId;
-            const newPast = [...prev.videoEditor.history.past, prev.videoEditor.timeline];
+
             return {
                 ...prev,
                 videoEditor: {
                     ...prev.videoEditor,
                     timeline: newTimeline,
                     selectedClipId: newSelectedClipId,
-                    history: {
-                        past: newPast,
-                        future: []
-                    }
+                    history: { past: newPast, future: [] }
                 }
             };
         });
@@ -254,6 +274,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const selectClip = (clipId: string | null) => {
         setAppState(prev => ({ ...prev, videoEditor: { ...prev.videoEditor, selectedClipId: clipId } }));
     };
+
+    const setPlayheadPosition = (position: number) => {
+        setAppState(prev => ({ ...prev, videoEditor: { ...prev.videoEditor, playheadPosition: position } }));
+    };
+    
+    const updateClipProperties = (clipId: string, updates: Partial<Clip>) => {
+        setAppState(prev => {
+             const currentTimeline = prev.videoEditor.timeline;
+             // We don't want simple property updates to create a new undo state, so we modify the current timeline.
+             // For a more robust system, this could be debounced or handled differently.
+             const newTimeline: TimelineState = {
+                video: currentTimeline.video.map(c => c.id === clipId ? { ...c, ...updates } : c),
+                audio: currentTimeline.audio.map(c => c.id === clipId ? { ...c, ...updates } : c),
+            };
+
+            return { ...prev, videoEditor: { ...prev.videoEditor, timeline: newTimeline } };
+        });
+    };
+
+    const splitClip = () => {
+        setAppState(prev => {
+            const { selectedClipId, playheadPosition, timeline } = prev.videoEditor;
+            if (!selectedClipId) return prev;
+
+            const currentTimeline = timeline;
+            const newPast = [...prev.videoEditor.history.past, currentTimeline];
+
+            let newTimeline: TimelineState = { ...currentTimeline };
+            let track: keyof TimelineState | null = null;
+            if (currentTimeline.video.some(c => c.id === selectedClipId)) track = 'video';
+            else if (currentTimeline.audio.some(c => c.id === selectedClipId)) track = 'audio';
+            
+            if (!track) return prev;
+
+            const trackClips = currentTimeline[track];
+            let clipStartTime = 0;
+            const newTrackClips: Clip[] = [];
+            let splitDone = false;
+
+            for (const clip of trackClips) {
+                const clipEndTime = clipStartTime + clip.duration;
+                if (clip.id === selectedClipId && playheadPosition > clipStartTime && playheadPosition < clipEndTime) {
+                    const splitPoint = playheadPosition - clipStartTime;
+                    
+                    const clipA: Clip = { ...clip, duration: splitPoint };
+                    const clipB: Clip = { ...clip, id: `clip-${Date.now()}`, duration: clip.duration - splitPoint };
+
+                    newTrackClips.push(clipA, clipB);
+                    splitDone = true;
+                } else {
+                    newTrackClips.push(clip);
+                }
+                clipStartTime = clipEndTime;
+            }
+
+            if (splitDone) {
+                 newTimeline = { ...currentTimeline, [track]: newTrackClips };
+                 return {
+                    ...prev,
+                    videoEditor: {
+                        ...prev.videoEditor,
+                        timeline: newTimeline,
+                        history: { past: newPast, future: [] },
+                        selectedClipId: null,
+                    }
+                };
+            }
+            
+            return prev; // Return previous state if split was not possible
+        });
+    };
+
 
     const undo = () => {
         setAppState(prev => {
@@ -298,7 +390,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
 
     return (
-        <AppContext.Provider value={{ appState, setAppState, addClipToTimeline, deleteClipFromTimeline, selectClip, undo, redo }}>
+        <AppContext.Provider value={{ 
+            appState, 
+            setAppState, 
+            addClipToTimeline, 
+            deleteClipFromTimeline, 
+            selectClip, 
+            undo, 
+            redo,
+            setPlayheadPosition,
+            splitClip,
+            updateClipProperties
+        }}>
             {children}
         </AppContext.Provider>
     );

@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 export const MusicNoteIcon: React.FC<React.SVGProps<SVGSVGElement>> = (props) => (

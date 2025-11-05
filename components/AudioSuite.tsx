@@ -41,13 +41,22 @@ async function decodeAudioData(
 }
 
 
-const prebuiltVoices: CustomVoice[] = [
+const corePrebuiltVoices: CustomVoice[] = [
     { name: 'Kore', description: 'Female, Clear, Professional' },
     { name: 'Puck', description: 'Male, Energetic, Youthful' },
     { name: 'Charon', description: 'Male, Deep, Authoritative' },
     { name: 'Fenrir', description: 'Male, Raspy, Storyteller' },
     { name: 'Zephyr', description: 'Female, Warm, Friendly' },
 ];
+
+const bengaliDocumentaryVoices: CustomVoice[] = [
+    { name: 'Nabin (Bengali Male)', description: 'A young, clear, and energetic male Bengali voice, suitable for modern documentaries targeting youth.' },
+    { name: 'Kotha (Bengali Female)', description: 'A calm, articulate, and warm female Bengali voice, perfect for narrative-driven documentaries and storytelling.' },
+    { name: 'Proshanto (Bengali Male)', description: 'A professional and standard male Bengali voice with clear pronunciation, ideal for formal and educational documentaries.' },
+    { name: 'Gombhir (Bengali Male)', description: 'A deep, authoritative, and serious male Bengali voice, fitting for historical, political, or scientific documentaries.' },
+    { name: 'Snigdha (Bengali Female)', description: 'A gentle, friendly, and engaging female Bengali voice, suitable for human-interest stories and cultural documentaries.' },
+];
+
 
 const AudioSuite: React.FC = () => {
     const { appState, setAppState } = useAppContext();
@@ -58,7 +67,7 @@ const AudioSuite: React.FC = () => {
         setAppState(prev => ({ ...prev, audioSuite: { ...prev.audioSuite, ...updates } }));
     };
 
-    const allVoices = [...prebuiltVoices, ...customVoices];
+    const allVoices = [...corePrebuiltVoices, ...bengaliDocumentaryVoices, ...customVoices];
 
     const handleGenerateSpeech = async () => {
         if (!text) {
@@ -68,11 +77,13 @@ const AudioSuite: React.FC = () => {
         setState({ isLoading: true, error: null, audioDataUrl: null });
         try {
             const selectedVoice = allVoices.find(v => v.name === voice);
-            // For custom voices, we pass the description to the API. For prebuilt, the name is sufficient.
-            const voiceDescription = prebuiltVoices.some(v => v.name === voice) ? undefined : selectedVoice?.description;
             
-            // The API requires one of the pre-built voice names, so we'll use a base and modify with the prompt
-            const baseVoiceName = prebuiltVoices.some(v => v.name === voice) ? voice : 'Kore';
+            // A voice is "core" if its name is in the core list. Everything else needs a description to guide the AI.
+            const isCoreVoice = corePrebuiltVoices.some(v => v.name === voice);
+            const voiceDescription = isCoreVoice ? undefined : selectedVoice?.description;
+            
+            // The API requires one of the pre-built voice names. Use the name if it's core, otherwise a default.
+            const baseVoiceName = isCoreVoice ? voice : 'Kore';
             
             const base64Audio = await generateSpeech(text, baseVoiceName, voiceDescription);
             
@@ -200,12 +211,17 @@ const AudioSuite: React.FC = () => {
                             onChange={(e) => setState({ voice: e.target.value })}
                             className="w-full p-2 bg-gray-700 rounded-md border border-gray-600"
                         >
-                            <optgroup label="Pre-built Voices">
-                                {prebuiltVoices.map(v => (
+                            <optgroup label="Standard Voices">
+                                {corePrebuiltVoices.map(v => (
                                     <option key={v.name} value={v.name}>{v.name} ({v.description})</option>
                                 ))}
                             </optgroup>
-                            {customVoices.length > 0 && <optgroup label="Custom Voices">
+                             <optgroup label="Bengali Documentary Voices">
+                                {bengaliDocumentaryVoices.map(v => (
+                                    <option key={v.name} value={v.name}>{v.name} ({v.description})</option>
+                                ))}
+                            </optgroup>
+                            {customVoices.length > 0 && <optgroup label="My Custom Voices">
                                 {customVoices.map(v => (
                                     <option key={v.name} value={v.name}>{v.name} ({v.description})</option>
                                 ))}
