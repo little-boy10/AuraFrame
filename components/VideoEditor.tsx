@@ -3,7 +3,7 @@ import { useAppContext } from '../context/AppContext';
 import Timeline from './editor/Timeline';
 import Inspector from './editor/Inspector';
 import Toolbar from './editor/Toolbar';
-import { HistoryItem } from '../types';
+import { HistoryItem, Clip } from '../types';
 import { CameraIcon } from './icons/CameraIcon';
 import { MusicNoteIcon } from './icons/MusicNoteIcon';
 
@@ -15,7 +15,7 @@ const VideoEditor: React.FC = () => {
     const { timeline, selectedClipId, playheadPosition } = videoEditor;
 
     const [leftPanelTab, setLeftPanelTab] = useState<LeftPanelTab>('media');
-    const [currentVideo, setCurrentVideo] = useState<{ src: string, volume: number } | null>(null);
+    const [currentVideo, setCurrentVideo] = useState<Clip | null>(null);
 
     const mediaItems = history.items.filter(item => item.type === 'video' || item.type === 'audio');
     const selectedClip = [...timeline.video, ...timeline.audio].find(clip => clip.id === selectedClipId);
@@ -36,7 +36,7 @@ const VideoEditor: React.FC = () => {
         for (const clip of timeline.video) {
             if (playheadPosition >= currentTime && playheadPosition < currentTime + clip.duration) {
                 // To-do: seek to the correct time in the video: playheadPosition - currentTime
-                setCurrentVideo({ src: clip.source, volume: clip.volume });
+                setCurrentVideo(clip);
                 foundClip = true;
                 break;
             }
@@ -58,6 +58,21 @@ const VideoEditor: React.FC = () => {
             name: item.prompt,
             duration: duration
         });
+    };
+
+    const generateFilterStyle = (clip: Clip | null): React.CSSProperties => {
+        if (!clip?.effects) return {};
+        const filters = [];
+        const { blur, grayscale, brightness, contrast, saturate } = clip.effects;
+
+        if (blur && blur > 0) filters.push(`blur(${blur}px)`);
+        if (grayscale && grayscale > 0) filters.push(`grayscale(${grayscale})`);
+        if (brightness && brightness !== 1) filters.push(`brightness(${brightness})`);
+        if (contrast && contrast !== 1) filters.push(`contrast(${contrast})`);
+        if (saturate && saturate !== 1) filters.push(`saturate(${saturate})`);
+    
+        if (filters.length === 0) return {};
+        return { filter: filters.join(' ') };
     };
 
     return (
@@ -106,7 +121,14 @@ const VideoEditor: React.FC = () => {
                     <h3 className="text-lg font-semibold mb-4">Preview</h3>
                     <div className="bg-black flex-grow rounded-md flex items-center justify-center">
                         {currentVideo ? (
-                            <video key={currentVideo.src} src={currentVideo.src} controls autoPlay className="max-h-full max-w-full" volume={currentVideo.volume} />
+                            <video 
+                                key={currentVideo.id} 
+                                src={currentVideo.source} 
+                                controls 
+                                autoPlay 
+                                className="max-h-full max-w-full transition-all duration-150" 
+                                style={generateFilterStyle(currentVideo)}
+                                volume={currentVideo.volume} />
                         ) : (
                             <div className="text-center text-gray-500">
                                 <CameraIcon className="w-16 h-16 mx-auto" />

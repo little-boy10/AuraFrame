@@ -10,7 +10,7 @@ export enum AppTab {
 }
 
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
-export type VideoResolution = '1080p' | '720p';
+export type VideoResolution = '1080p' | '720p' | '4k' | '8k';
 
 export type ChatMessage = {
   role: 'user' | 'model';
@@ -40,6 +40,13 @@ export interface Clip {
   name: string; // From history item prompt
   duration: number; // in seconds
   volume: number; // From 0 to 1
+  effects?: {
+    blur?: number; // in pixels
+    grayscale?: number; // 0 to 1
+    brightness?: number; // 0 to 2 (1 is default)
+    contrast?: number; // 0 to 2 (1 is default)
+    saturate?: number; // 0 to 2 (1 is default)
+  }
 }
 
 export type TimelineTrack = Clip[];

@@ -121,14 +121,33 @@ export const generateVideo = async (prompt: string, aspectRatio: AspectRatio, re
     // A new AI instance must be created before each call to ensure the latest API key is used.
     const freshAi = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const fullPrompt = `${prompt}, in a ${visualStyle} style. The camera shot should be a ${cameraMovement}.`;
+    let fullPrompt = `${prompt}, in a ${visualStyle} style. The camera shot should be a ${cameraMovement}.`;
+    let apiResolution: '1080p' | '720p' = '1080p';
+
+    switch (resolution) {
+        case '4k':
+            fullPrompt += ', 4k UHD, ultra high resolution, cinematic quality, sharp details';
+            apiResolution = '1080p';
+            break;
+        case '8k':
+            fullPrompt += ', 8k UHD, masterpiece, ultra-realistic, photorealistic details, professional color grading';
+            apiResolution = '1080p';
+            break;
+        case '720p':
+            apiResolution = '720p';
+            break;
+        case '1080p':
+        default:
+            apiResolution = '1080p';
+            break;
+    }
 
     let operation = await freshAi.models.generateVideos({
         model: 'veo-3.1-fast-generate-preview',
         prompt: fullPrompt,
         config: {
             numberOfVideos: 1,
-            resolution,
+            resolution: apiResolution,
             aspectRatio,
         }
     });

@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { useAppContext } from '../context/AppContext';
 import { generateVideo, checkVideoStatus } from '../services/geminiService';
@@ -160,9 +159,16 @@ const SceneCreator: React.FC = () => {
                             <div>
                                 <label className="font-medium block mb-1">Resolution:</label>
                                 <select value={resolution} onChange={e => setState({ resolution: e.target.value as VideoResolution })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2" disabled={isLoading}>
-                                    <option value="1080p">1080p</option>
                                     <option value="720p">720p</option>
+                                    <option value="1080p">1080p</option>
+                                    <option value="4k">4k (AI Upscaled)</option>
+                                    <option value="8k">8k (AI Upscaled)</option>
                                 </select>
+                                {(resolution === '4k' || resolution === '8k') && (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        AI upscaling enhances the prompt to generate a higher quality 1080p video.
+                                    </p>
+                                )}
                             </div>
                         </div>
 

@@ -197,7 +197,7 @@ interface AppContextType {
     appState: AppState;
     setAppState: React.Dispatch<React.SetStateAction<AppState>>;
     // Video Editor Actions
-    addClipToTimeline: (clip: Omit<Clip, 'id' | 'volume'>) => void;
+    addClipToTimeline: (clip: Omit<Clip, 'id' | 'volume' | 'effects'>) => void;
     deleteClipFromTimeline: (clipId: string) => void;
     selectClip: (clipId: string | null) => void;
     undo: () => void;
@@ -222,8 +222,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // --- Video Editor Actions ---
 
-    const addClipToTimeline = (clip: Omit<Clip, 'id' | 'volume'>) => {
-        const newClip: Clip = { ...clip, id: `clip-${Date.now()}`, volume: 1 };
+    const addClipToTimeline = (clip: Omit<Clip, 'id' | 'volume' | 'effects'>) => {
+        const newClip: Clip = { ...clip, id: `clip-${Date.now()}`, volume: 1, effects: {} };
         
         setAppState(prev => {
             const currentTimeline = prev.videoEditor.timeline;
@@ -282,14 +282,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const updateClipProperties = (clipId: string, updates: Partial<Clip>) => {
         setAppState(prev => {
              const currentTimeline = prev.videoEditor.timeline;
-             // We don't want simple property updates to create a new undo state, so we modify the current timeline.
-             // For a more robust system, this could be debounced or handled differently.
+             const newPast = [...prev.videoEditor.history.past, currentTimeline];
+
              const newTimeline: TimelineState = {
-                video: currentTimeline.video.map(c => c.id === clipId ? { ...c, ...updates } : c),
+                video: currentTimeline.video.map(c => {
+                    if (c.id === clipId) {
+                        const newClip = { ...c, ...updates };
+                        // If effects are being updated, merge them with existing effects
+                        if (updates.effects) {
+                            newClip.effects = { ...c.effects, ...updates.effects };
+                        }
+                        return newClip;
+                    }
+                    return c;
+                }),
                 audio: currentTimeline.audio.map(c => c.id === clipId ? { ...c, ...updates } : c),
             };
 
-            return { ...prev, videoEditor: { ...prev.videoEditor, timeline: newTimeline } };
+            return { 
+                ...prev, 
+                videoEditor: { 
+                    ...prev.videoEditor, 
+                    timeline: newTimeline,
+                    history: { past: newPast, future: [] }
+                } 
+            };
         });
     };
 
