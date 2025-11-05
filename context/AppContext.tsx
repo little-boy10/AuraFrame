@@ -73,11 +73,9 @@ interface AppState {
         script: string | null;
         error: string | null;
     };
-    viralCatalyst: {
-        ideaOrPrompt: string;
-        videoFile: File | null;
-        audioFile: File | null;
-        competitorUrl: string;
+    contentAnalysis: {
+        prompt: string;
+        file: File | null;
         isLoading: boolean;
         result: string | null;
         error: string | null;
@@ -168,11 +166,9 @@ const initialState: AppState = {
         script: null,
         error: null,
     },
-    viralCatalyst: {
-        ideaOrPrompt: 'A new productivity hack for software developers',
-        videoFile: null,
-        audioFile: null,
-        competitorUrl: '',
+    contentAnalysis: {
+        prompt: 'Summarize the key points from the uploaded document.',
+        file: null,
         isLoading: false,
         result: null,
         error: null,

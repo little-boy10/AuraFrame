@@ -4,7 +4,7 @@ export enum AppTab {
   IMAGE_STUDIO = 'Image Studio',
   VIDEO_EDITOR = 'Video Editor',
   SCRIPT_WRITER = 'Script Writer',
-  VIRAL_CATALYST = 'Viral Catalyst',
+  CONTENT_ANALYSIS = 'Content Analysis',
   AUDIO_SUITE = 'Audio Suite',
   CHATBOT = 'Chatbot',
   HISTORY = 'History',

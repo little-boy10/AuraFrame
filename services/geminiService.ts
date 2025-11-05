@@ -198,27 +198,12 @@ export const generateScript = async (topic: string, audience: string, tone: stri
     return response.text;
 };
 
-export const generateViralStrategy = async (idea: string, videoFile?: File | null, audioFile?: File | null, competitorUrl?: string): Promise<string> => {
-    const parts: any[] = [{ text: `
-        Analyze the following content idea and generate a comprehensive viral marketing strategy for YouTube.
-        Core Idea: "${idea}"
-        ${competitorUrl ? `Competitor analysis: Analyze this successful video and identify key viral triggers: ${competitorUrl}` : ''}
-        
-        Provide the following, formatted in Markdown:
-        - **Catchy Titles:** 5 options combining curiosity, urgency, and keywords.
-        - **Compelling Description:** A paragraph optimized for SEO with a strong hook.
-        - **Viral Hashtags:** A mix of broad and niche hashtags.
-        - **Thumbnail Concepts:** 3 distinct, high-contrast, emotion-driven ideas for a thumbnail.
-        - **Growth Hacks:** 3 actionable tips to boost initial traction (e.g., community engagement, collaborations, short-form content repurposing).
-    `}];
+export const analyzeContent = async (prompt: string, file: File | null): Promise<string> => {
+    const parts: any[] = [{ text: prompt }];
 
-    if (videoFile) {
-        parts.push(await fileToGenerativePart(videoFile));
-        parts.push({ text: "\nAlso analyze the provided video content for strengths and weaknesses." });
-    }
-    if (audioFile) {
-        parts.push(await fileToGenerativePart(audioFile));
-        parts.push({ text: "\nAlso analyze the provided audio for tone, clarity, and engagement." });
+    if (file) {
+        parts.push(await fileToGenerativePart(file));
+        parts.push({ text: "\nBased on the user's prompt, analyze the provided file and generate a response." });
     }
 
     const response = await ai.models.generateContent({

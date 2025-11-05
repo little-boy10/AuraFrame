@@ -4,7 +4,7 @@ import { AppTab } from './types';
 import Header from './components/Header';
 import SceneCreator from './components/SceneCreator';
 import ImageStudio from './components/ImageStudio';
-import ViralCatalyst from './components/ViralCatalyst';
+import ContentAnalysis from './components/ContentAnalysis';
 import AudioSuite from './components/AudioSuite';
 import Chatbot from './components/Chatbot';
 import History from './components/History';
@@ -33,8 +33,8 @@ const AppContent: React.FC = () => {
         <div hidden={activeTab !== AppTab.SCRIPT_WRITER}>
           <ScriptWriter />
         </div>
-        <div hidden={activeTab !== AppTab.VIRAL_CATALYST}>
-          <ViralCatalyst />
+        <div hidden={activeTab !== AppTab.CONTENT_ANALYSIS}>
+          <ContentAnalysis />
         </div>
         <div hidden={activeTab !== AppTab.AUDIO_SUITE}>
           <AudioSuite />
