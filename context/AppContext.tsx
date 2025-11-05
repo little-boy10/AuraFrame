@@ -1,219 +1,313 @@
-import React, { createContext, useContext, useState } from 'react';
-import { AppTab, AspectRatio, ChatMessage, HistoryItem } from '../types';
+
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { AppTab, AspectRatio, ChatMessage, HistoryItem, HistoryItemType, VideoResolution, VideoGenerationStyle, CameraMovement, TimelineTrack, Clip } from '../types';
 import { getHistory } from '../services/historyService';
 
-// --- State Interfaces ---
-
-interface SceneCreatorState {
-    imagePrompt: string;
-    aspectRatio: AspectRatio;
-    visualStyle: 'High-Res Cinematic' | 'Low-Poly Tactical';
-    isGeneratingImage: boolean;
-    generatedImage: string | null;
-    videoPrompt: string;
-    resolution: '720p' | '1080p';
-    cameraMovement: string;
-    isGeneratingVideo: boolean;
-    generatedVideo: string | null;
-    videoStatus: string;
-    error: string | null;
+export interface CustomVoice {
+    name: string;
+    description: string;
 }
 
-interface ImageStudioGenerateState {
-    prompt: string;
-    aspectRatio: AspectRatio;
-    isLoading: boolean;
-    isUpscaling: boolean;
-    image: string | null;
-    error: string | null;
-}
-
-interface ImageStudioEditState {
-    file: File | null;
-    preview: string | null;
-    prompt: string;
-    isLoading: boolean;
-    editedImage: string | null;
-    error: string | null;
-}
-
-interface ImageStudioAnalyzeState {
-    file: File | null;
-    preview: string | null;
-    isLoading: boolean;
-    analysis: string | null;
-    error: string | null;
-}
-
-interface ImageStudioState {
-    activeTab: 'generate' | 'edit' | 'analyze';
-    generate: ImageStudioGenerateState;
-    edit: ImageStudioEditState;
-    analyze: ImageStudioAnalyzeState;
-}
-
-interface ContentAnalysisVideoState {
-    file: File | null;
-    isLoading: boolean;
-    analysis: string | null;
-    error: string | null;
-}
-
-interface ContentAnalysisQueryState {
-    prompt: string;
-    isLoading: boolean;
-    result: string | null;
-    error: string | null;
-}
-
-interface ContentAnalysisState {
-    video: ContentAnalysisVideoState;
-    query: ContentAnalysisQueryState;
-}
-
-interface AudioSuiteTTSState {
-    text: string;
-    isLoading: boolean;
-    error: string | null;
-    voice: string;
-}
-
-interface AudioSuiteTranscriberState {
-    isRecording: boolean;
-    transcription: string;
-    error: string | null;
-}
-
-interface AudioSuiteLiveState {
-    isSessionActive: boolean;
-    status: string;
-    transcripts: { type: 'user' | 'model', text: string }[];
-}
-
-interface AudioSuiteState {
-    tts: AudioSuiteTTSState;
-    transcriber: AudioSuiteTranscriberState;
-    live: AudioSuiteLiveState;
-    // New state for voice cloning simulation
-    isCloning: boolean;
-    cloningStatus: string;
-    isCloneReady: boolean;
-}
-
-interface ChatbotState {
-    messages: ChatMessage[];
-    input: string;
-    isLoading: boolean;
-}
-
-interface HistoryState {
-    items: HistoryItem[];
-    filter: HistoryItem[ 'type' ] | 'all';
-}
-
-// --- Full App State ---
+// Define the shape of your application state
 interface AppState {
     activeTab: AppTab;
-    sceneCreator: SceneCreatorState;
-    imageStudio: ImageStudioState;
-    contentAnalysis: ContentAnalysisState;
-    audioSuite: AudioSuiteState;
-    chatbot: ChatbotState;
-    history: HistoryState;
+    history: {
+        items: HistoryItem[];
+        filter: 'all' | HistoryItem['type'];
+    };
+    sceneCreator: {
+        prompt: string;
+        aspectRatio: AspectRatio;
+        resolution: VideoResolution;
+        visualStyle: VideoGenerationStyle;
+        cameraMovement: CameraMovement;
+        isLoading: boolean;
+        operation: any | null;
+        error: string | null;
+        pollingIntervalId: ReturnType<typeof setTimeout> | null;
+        statusMessage: string;
+    };
+    imageStudio: {
+        activeTab: 'generate' | 'edit' | 'analyze';
+        generate: {
+            prompt: string;
+            aspectRatio: AspectRatio;
+            isLoading: boolean;
+            isUpscaling: boolean;
+            image: string | null;
+            error: string | null;
+            recentImages: string[];
+        },
+        edit: {
+            file: File | null;
+            preview: string | null;
+            prompt: string;
+            isLoading: boolean;
+            editedImage: string | null;
+            error: string | null;
+            brushColor: string;
+        },
+        analyze: {
+            file: File | null;
+            preview: string | null;
+            isLoading: boolean;
+            analysis: string | null;
+            error: string | null;
+        }
+    };
+    videoEditor: {
+        timeline: TimelineTrack;
+        history: {
+            past: TimelineTrack[];
+            future: TimelineTrack[];
+        };
+        selectedClipId: string | null;
+    };
+    scriptWriter: {
+        topic: string;
+        audience: string;
+        tone: 'Informative' | 'Entertaining' | 'Inspirational' | 'Funny / Comedic' | 'Formal / Professional' | 'Casual / Conversational';
+        length: 'Short (< 1 minute)' | 'Medium (5-10 minutes)' | 'Long (> 15 minutes)';
+        platform: 'YouTube' | 'TikTok' | 'Instagram Reels' | 'Corporate Training' | 'Podcast';
+        isLoading: boolean;
+        script: string | null;
+        error: string | null;
+    };
+    viralCatalyst: {
+        ideaOrPrompt: string;
+        videoFile: File | null;
+        audioFile: File | null;
+        competitorUrl: string;
+        isLoading: boolean;
+        result: string | null;
+        error: string | null;
+    };
+    audioSuite: {
+        text: string;
+        voice: string;
+        isLoading: boolean;
+        audioDataUrl: string | null;
+        error: string | null;
+        customVoices: CustomVoice[];
+        customVoicePrompt: string;
+    };
+    chatbot: {
+        messages: ChatMessage[];
+        input: string;
+        isLoading: boolean;
+    };
 }
 
-// --- Context Type ---
-interface AppContextType {
-    appState: AppState;
-    setAppState: React.Dispatch<React.SetStateAction<AppState>>;
-}
-
-// --- Initial State ---
+// Define the initial state
 const initialState: AppState = {
     activeTab: AppTab.SCENE_CREATOR,
+    history: {
+        items: [],
+        filter: 'all',
+    },
     sceneCreator: {
-        imagePrompt: 'A featureless red figure, fully clothed in a patient gown, is sprinting down a stark white lab hallway.',
+        prompt: 'A majestic lion roaring on a cliff at sunrise',
         aspectRatio: '16:9',
-        visualStyle: 'High-Res Cinematic',
-        isGeneratingImage: false,
-        generatedImage: null,
-        videoPrompt: 'The camera follows the figure, increasing intensity.',
         resolution: '720p',
-        cameraMovement: 'Smooth Dolly Push-in',
-        isGeneratingVideo: false,
-        generatedVideo: null,
-        videoStatus: '',
+        visualStyle: 'cinematic',
+        cameraMovement: 'Static Shot',
+        isLoading: false,
+        operation: null,
         error: null,
+        pollingIntervalId: null,
+        statusMessage: '',
     },
     imageStudio: {
         activeTab: 'generate',
         generate: {
-            prompt: 'A highly stylized 3D render of a featureless human figure with shiny red material, running through a neon-lit cyberpunk city alley at night.',
-            aspectRatio: '16:9',
+            prompt: 'A hyper-realistic portrait of an astronaut drinking coffee on Mars',
+            aspectRatio: '1:1',
             isLoading: false,
             isUpscaling: false,
             image: null,
             error: null,
+            recentImages: [],
         },
-        edit: { file: null, preview: null, prompt: 'Add a retro, grainy film filter.', isLoading: false, editedImage: null, error: null },
-        analyze: { file: null, preview: null, isLoading: false, analysis: null, error: null },
+        edit: {
+            file: null,
+            preview: null,
+            prompt: 'Add a UFO in the sky',
+            isLoading: false,
+            editedImage: null,
+            error: null,
+            brushColor: '#FF00FF',
+        },
+        analyze: {
+            file: null,
+            preview: null,
+            isLoading: false,
+            analysis: null,
+            error: null,
+        },
     },
-    contentAnalysis: {
-        video: { file: null, isLoading: false, analysis: null, error: null },
-        query: { prompt: 'Analyze the geopolitical implications of the three-body problem in astrophysics on international space treaties.', isLoading: false, result: null, error: null }
+    videoEditor: {
+        timeline: [],
+        history: {
+            past: [],
+            future: [],
+        },
+        selectedClipId: null,
+    },
+    scriptWriter: {
+        topic: 'The history of video games',
+        audience: 'Gamers and history enthusiasts',
+        tone: 'Informative',
+        length: 'Medium (5-10 minutes)',
+        platform: 'YouTube',
+        isLoading: false,
+        script: null,
+        error: null,
+    },
+    viralCatalyst: {
+        ideaOrPrompt: 'A new productivity hack for software developers',
+        videoFile: null,
+        audioFile: null,
+        competitorUrl: '',
+        isLoading: false,
+        result: null,
+        error: null,
     },
     audioSuite: {
-        tts: { text: 'Hello! I am Gemini, ready to bring your words to life.', isLoading: false, error: null, voice: 'Kore' },
-        transcriber: { isRecording: false, transcription: '', error: null },
-        live: { isSessionActive: false, status: 'Idle', transcripts: [] },
-        isCloning: false,
-        cloningStatus: 'Ready to start.',
-        isCloneReady: false,
+        text: 'Hello, welcome to AuraFrame Studio, your all-in-one content creation powerhouse.',
+        voice: 'Kore',
+        isLoading: false,
+        audioDataUrl: null,
+        error: null,
+        customVoices: [],
+        customVoicePrompt: 'A deep, commanding voice for a movie trailer',
     },
     chatbot: {
-        messages: [],
+        messages: [{ role: 'model', text: 'Hi! How can I help you with your content creation today?' }],
         input: '',
         isLoading: false,
     },
-    history: {
-        items: [],
-        filter: 'all',
-    }
 };
 
-// --- Create Context ---
+// Define the context shape
+interface AppContextType {
+    appState: AppState;
+    setAppState: React.Dispatch<React.SetStateAction<AppState>>;
+    addClipToTimeline: (clip: Omit<Clip, 'id'>) => void;
+    deleteClipFromTimeline: (clipId: string) => void;
+    selectClip: (clipId: string | null) => void;
+    undo: () => void;
+    redo: () => void;
+}
+
+// Create the context
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// --- Provider Component ---
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    const [appState, setAppState] = useState<AppState>(() => {
-        // Load history from localStorage on initial load
-        const storedHistory = getHistory();
-        const initialBotMessage = { role: 'model' as const, text: 'Hello! How can I help you today?' };
-        return {
-            ...initialState,
-            history: {
-                ...initialState.history,
-                items: storedHistory
-            },
-            chatbot: {
-                ...initialState.chatbot,
-                messages: [initialBotMessage]
+// Create the provider component
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+    const [appState, setAppState] = useState<AppState>(initialState);
+
+    useEffect(() => {
+        // Load history from localStorage on initial render
+        const loadedHistory = getHistory();
+        setAppState(prev => ({ ...prev, history: { ...prev.history, items: loadedHistory } }));
+    }, []);
+
+    const addClipToTimeline = (clip: Omit<Clip, 'id'>) => {
+        const newClip = { ...clip, id: `clip-${Date.now()}` };
+        setAppState(prev => {
+            const newTimeline = [...prev.videoEditor.timeline, newClip];
+            const newPast = [...prev.videoEditor.history.past, prev.videoEditor.timeline];
+            return {
+                ...prev,
+                videoEditor: {
+                    ...prev.videoEditor,
+                    timeline: newTimeline,
+                    history: {
+                        past: newPast,
+                        future: []
+                    }
+                }
+            };
+        });
+    };
+
+    const deleteClipFromTimeline = (clipId: string) => {
+        setAppState(prev => {
+            const newTimeline = prev.videoEditor.timeline.filter(c => c.id !== clipId);
+            const newSelectedClipId = prev.videoEditor.selectedClipId === clipId ? null : prev.videoEditor.selectedClipId;
+            const newPast = [...prev.videoEditor.history.past, prev.videoEditor.timeline];
+            return {
+                ...prev,
+                videoEditor: {
+                    ...prev.videoEditor,
+                    timeline: newTimeline,
+                    selectedClipId: newSelectedClipId,
+                    history: {
+                        past: newPast,
+                        future: []
+                    }
+                }
+            };
+        });
+    };
+    
+    const selectClip = (clipId: string | null) => {
+        setAppState(prev => ({ ...prev, videoEditor: { ...prev.videoEditor, selectedClipId: clipId } }));
+    };
+
+    const undo = () => {
+        setAppState(prev => {
+            const { past, future } = prev.videoEditor.history;
+            if (past.length === 0) return prev;
+            const previous = past[past.length - 1];
+            const newPast = past.slice(0, past.length - 1);
+            return {
+                ...prev,
+                videoEditor: {
+                    ...prev.videoEditor,
+                    timeline: previous,
+                    history: {
+                        past: newPast,
+                        future: [prev.videoEditor.timeline, ...future]
+                    },
+                    selectedClipId: null, // Deselect on undo
+                }
             }
-        };
-    });
+        });
+    };
+
+    const redo = () => {
+        setAppState(prev => {
+            const { past, future } = prev.videoEditor.history;
+            if (future.length === 0) return prev;
+            const next = future[0];
+            const newFuture = future.slice(1);
+            return {
+                ...prev,
+                videoEditor: {
+                    ...prev.videoEditor,
+                    timeline: next,
+                    history: {
+                        past: [...past, prev.videoEditor.timeline],
+                        future: newFuture
+                    },
+                    selectedClipId: null, // Deselect on redo
+                }
+            }
+        });
+    };
 
     return (
-        <AppContext.Provider value={{ appState, setAppState }}>
+        <AppContext.Provider value={{ appState, setAppState, addClipToTimeline, deleteClipFromTimeline, selectClip, undo, redo }}>
             {children}
         </AppContext.Provider>
     );
 };
 
-// --- Custom Hook ---
-export const useAppContext = (): AppContextType => {
+// Create a custom hook for easy context access
+export const useAppContext = () => {
     const context = useContext(AppContext);
-    if (!context) {
+    if (context === undefined) {
         throw new Error('useAppContext must be used within an AppProvider');
     }
     return context;

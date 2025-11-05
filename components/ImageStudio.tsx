@@ -1,5 +1,4 @@
-
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef, useEffect, useState } from 'react';
 import { generateImage, editImage, analyzeImage, upscaleImage } from '../services/geminiService';
 import { addToHistory } from '../services/historyService';
 import { AspectRatio } from '../types';
@@ -7,6 +6,7 @@ import { Loader } from './icons/Loader';
 import { UploadIcon } from './icons/UploadIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { useAppContext } from '../context/AppContext';
+import { DownloadIcon } from './icons/DownloadIcon';
 
 type StudioTab = 'generate' | 'edit' | 'analyze';
 
@@ -53,7 +53,7 @@ const ImageStudio: React.FC = () => {
 
 const GenerateImage: React.FC = () => {
     const { appState, setAppState } = useAppContext();
-    const { prompt, aspectRatio, isLoading, isUpscaling, image, error } = appState.imageStudio.generate;
+    const { prompt, aspectRatio, isLoading, isUpscaling, image, error, recentImages } = appState.imageStudio.generate;
 
     const setState = (updates: Partial<typeof appState.imageStudio.generate>) => {
         setAppState(prev => ({ ...prev, imageStudio: { ...prev.imageStudio, generate: { ...prev.imageStudio.generate, ...updates } } }));
@@ -66,9 +66,12 @@ const GenerateImage: React.FC = () => {
             const newHistoryItem = { type: 'image' as const, prompt, data: result, metadata: { aspectRatio } };
             addToHistory(newHistoryItem);
 
+            // Add to recent images, keeping only the last 4
+            const updatedRecentImages = [result, ...recentImages].slice(0, 4);
+
             setAppState(prev => ({
                 ...prev,
-                imageStudio: { ...prev.imageStudio, generate: { ...prev.imageStudio.generate, image: result, isLoading: false } },
+                imageStudio: { ...prev.imageStudio, generate: { ...prev.imageStudio.generate, image: result, isLoading: false, recentImages: updatedRecentImages } },
                 history: { ...prev.history, items: [{ ...newHistoryItem, id: Date.now(), timestamp: new Date().toISOString() }, ...prev.history.items] }
             }));
         } catch (err) {
@@ -78,20 +81,35 @@ const GenerateImage: React.FC = () => {
 
     const handleUpscale = async () => {
         if (!image) return;
+        if (!window.confirm("This will generate a new, upscaled version of the image, which will be added to your history. Do you want to proceed?")) {
+            return;
+        }
         setState({ isUpscaling: true, error: null });
         try {
             const result = await upscaleImage(image);
             const newHistoryItem = { type: 'image' as const, prompt: 'Upscaled Image', data: result, metadata: { original: image } };
             addToHistory(newHistoryItem);
+             // Add to recent images, keeping only the last 4
+            const updatedRecentImages = [result, ...recentImages].slice(0, 4);
 
             setAppState(prev => ({
                 ...prev,
-                imageStudio: { ...prev.imageStudio, generate: { ...prev.imageStudio.generate, image: result, isUpscaling: false } },
+                imageStudio: { ...prev.imageStudio, generate: { ...prev.imageStudio.generate, image: result, isUpscaling: false, recentImages: updatedRecentImages } },
                 history: { ...prev.history, items: [{ ...newHistoryItem, id: Date.now(), timestamp: new Date().toISOString() }, ...prev.history.items] }
             }));
         } catch (err) {
             setState({ error: err instanceof Error ? err.message : 'Failed to upscale image', isUpscaling: false });
         }
+    };
+
+    const handleDownloadImage = () => {
+        if (!image) return;
+        const link = document.createElement('a');
+        link.href = image;
+        link.download = `auroraframe-image-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
     return (
@@ -114,20 +132,50 @@ const GenerateImage: React.FC = () => {
                 </button>
                 {error && <p className="text-red-400">{error}</p>}
             </div>
-            <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center min-h-[256px] p-4 space-y-4">
-                {isLoading ? <Loader large={true} /> : image ? (
-                    <>
-                        <img src={image} alt="Generated" className="max-h-80 w-auto rounded-md object-contain"/>
-                        <button
-                            onClick={handleUpscale}
-                            disabled={isUpscaling || isLoading}
-                            className="w-full max-w-xs flex justify-center items-center gap-2 bg-blue-600 text-white font-bold py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-600"
-                        >
-                            {isUpscaling ? <Loader /> : <SparklesIcon />}
-                            {isUpscaling ? 'Upscaling...' : 'Upscale to Higher Resolution'}
-                        </button>
-                    </>
-                ) : <p className="text-gray-500">Image will appear here</p>}
+            <div className="space-y-4">
+                <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center min-h-[256px] p-4 space-y-4">
+                    {isLoading ? <Loader large={true} /> : image ? (
+                        <>
+                            <img src={image} alt="Generated" className="max-h-80 w-auto rounded-md object-contain"/>
+                            <div className="flex flex-wrap justify-center gap-4 w-full">
+                                <button
+                                    onClick={handleUpscale}
+                                    disabled={isUpscaling || isLoading}
+                                    className="flex-grow flex justify-center items-center gap-2 bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-600"
+                                >
+                                    {isUpscaling ? <Loader /> : <SparklesIcon />}
+                                    {isUpscaling ? 'Upscaling...' : 'Upscale'}
+                                </button>
+                                <button
+                                    onClick={handleDownloadImage}
+                                    disabled={isUpscaling || isLoading}
+                                    className="flex-grow flex justify-center items-center gap-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700 disabled:bg-gray-600"
+                                >
+                                    <DownloadIcon />
+                                    Download
+                                </button>
+                            </div>
+                        </>
+                    ) : <p className="text-gray-500">Image will appear here</p>}
+                </div>
+
+                {recentImages.length > 0 && (
+                    <div className="space-y-2">
+                        <h4 className="text-sm font-semibold text-gray-300">Recent Generations:</h4>
+                        <div className="grid grid-cols-4 gap-2">
+                            {recentImages.map((imgSrc, index) => (
+                                <img
+                                    key={index}
+                                    src={imgSrc}
+                                    alt={`Recent generation ${index + 1}`}
+                                    className="w-full h-auto rounded-md object-cover cursor-pointer hover:ring-2 hover:ring-purple-500"
+                                    onClick={() => setState({ image: imgSrc })}
+                                    title="Click to select this image"
+                                />
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -135,11 +183,68 @@ const GenerateImage: React.FC = () => {
 
 const EditImage: React.FC = () => {
     const { appState, setAppState } = useAppContext();
-    const { file, preview, prompt, isLoading, editedImage, error } = appState.imageStudio.edit;
+    const { file, preview, prompt, isLoading, editedImage, error, brushColor } = appState.imageStudio.edit;
+
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const isDrawingRef = useRef(false);
+    const lastPosRef = useRef<{ x: number; y: number } | null>(null);
 
     const setState = (updates: Partial<typeof appState.imageStudio.edit>) => {
         setAppState(prev => ({ ...prev, imageStudio: { ...prev.imageStudio, edit: { ...prev.imageStudio.edit, ...updates } } }));
     };
+
+    // Draw the initial image onto the canvas when a file is uploaded
+    useEffect(() => {
+        if (!preview || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0);
+        };
+        img.src = preview;
+    }, [preview]);
+
+    const getMousePos = (canvas: HTMLCanvasElement, evt: React.MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top,
+        };
+    };
+
+    const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        isDrawingRef.current = true;
+        lastPosRef.current = getMousePos(canvasRef.current!, e);
+    };
+
+    const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+        if (!isDrawingRef.current || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const pos = getMousePos(canvas, e);
+        if (ctx && lastPosRef.current) {
+            ctx.beginPath();
+            ctx.strokeStyle = brushColor;
+            ctx.lineWidth = 5;
+            ctx.lineCap = 'round';
+            ctx.moveTo(lastPosRef.current.x, lastPosRef.current.y);
+            ctx.lineTo(pos.x, pos.y);
+            ctx.stroke();
+        }
+        lastPosRef.current = pos;
+    };
+
+    const stopDrawing = () => {
+        isDrawingRef.current = false;
+        lastPosRef.current = null;
+    };
+
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files?.[0]) {
@@ -151,13 +256,14 @@ const EditImage: React.FC = () => {
     };
 
     const handleEdit = async () => {
-        if (!file || !prompt || !preview) {
+        if (!file || !prompt || !canvasRef.current) {
             setState({ error: 'Please upload an image and provide an edit prompt.' });
             return;
         }
         setState({ isLoading: true, error: null });
         try {
-            const result = await editImage(preview, prompt);
+            const editedImageDataUrl = canvasRef.current.toDataURL('image/png');
+            const result = await editImage(editedImageDataUrl, prompt);
             const newHistoryItem = { type: 'image' as const, prompt, data: result, metadata: { edit: true, original: preview } };
             addToHistory(newHistoryItem);
 
@@ -170,6 +276,16 @@ const EditImage: React.FC = () => {
             setState({ error: err instanceof Error ? err.message : 'Failed to edit image', isLoading: false });
         }
     };
+    
+    const handleDownloadEditedImage = () => {
+        if (!editedImage) return;
+        const link = document.createElement('a');
+        link.href = editedImage;
+        link.download = `auroraframe-edited-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     return (
         <div className="space-y-4">
@@ -181,6 +297,16 @@ const EditImage: React.FC = () => {
                         <UploadIcon className="mx-auto h-12 w-12 text-gray-400"/>
                         <span className="mt-2 block text-sm font-medium text-gray-300">{file ? file.name : 'Click to upload an image'}</span>
                     </label>
+                    <div className="flex items-center gap-4">
+                        <label htmlFor="brush-color" className="font-medium">Brush Color:</label>
+                        <input
+                            id="brush-color"
+                            type="color"
+                            value={brushColor}
+                            onChange={(e) => setState({ brushColor: e.target.value })}
+                            className="w-10 h-10 p-1 bg-gray-700 border border-gray-600 rounded-md cursor-pointer"
+                        />
+                    </div>
                      <textarea className="w-full p-3 bg-gray-700 rounded-md border border-gray-600" rows={3} value={prompt} onChange={e => setState({ prompt: e.target.value })} placeholder="e.g., Add a retro filter, remove the background..."/>
                      <button onClick={handleEdit} disabled={isLoading || !file} className="w-full flex justify-center items-center gap-2 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-600">
                         {isLoading ? <Loader /> : <SparklesIcon />} {isLoading ? 'Editing...' : 'Apply Edit'}
@@ -188,8 +314,34 @@ const EditImage: React.FC = () => {
                     {error && <p className="text-red-400">{error}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center p-2"><p className="text-sm font-bold mb-2">Original</p>{preview ? <img src={preview} alt="Original" className="max-h-80 w-auto rounded-md object-contain"/> : <p className="text-gray-500 text-center flex-grow flex items-center">Upload an image to see a preview</p>}</div>
-                    <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center p-2"><p className="text-sm font-bold mb-2">Edited</p>{isLoading ? <Loader large={true} /> : editedImage ? <img src={editedImage} alt="Edited" className="max-h-80 w-auto rounded-md object-contain"/> : <p className="text-gray-500 text-center flex-grow flex items-center">Edited image will appear here</p>}</div>
+                    <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center p-2">
+                        <p className="text-sm font-bold mb-2">Original + Mask</p>
+                        {preview ? (
+                             <canvas
+                                ref={canvasRef}
+                                className="max-h-80 max-w-full rounded-md object-contain cursor-crosshair"
+                                onMouseDown={startDrawing}
+                                onMouseMove={draw}
+                                onMouseUp={stopDrawing}
+                                onMouseLeave={stopDrawing}
+                            />
+                        ) : <p className="text-gray-500 text-center flex-grow flex items-center">Upload an image to start editing</p>}
+                    </div>
+                    <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center p-2 space-y-2">
+                        <p className="text-sm font-bold">Edited</p>
+                        {isLoading ? <Loader large={true} /> : editedImage ? (
+                            <>
+                                <img src={editedImage} alt="Edited" className="max-h-64 w-auto rounded-md object-contain flex-grow"/>
+                                <button
+                                    onClick={handleDownloadEditedImage}
+                                    className="w-full flex justify-center items-center gap-2 bg-green-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-green-700 text-sm"
+                                >
+                                    <DownloadIcon />
+                                    Download
+                                </button>
+                            </>
+                        ) : <p className="text-gray-500 text-center flex-grow flex items-center">Edited image will appear here</p>}
+                    </div>
                 </div>
             </div>
         </div>

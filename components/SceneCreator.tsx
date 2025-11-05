@@ -1,271 +1,212 @@
-import React from 'react';
-import { generateImage, generateVideoFromImage } from '../services/geminiService';
+
+import React, { useEffect } from 'react';
+import { useAppContext } from '../context/AppContext';
+import { generateVideo, checkVideoStatus } from '../services/geminiService';
 import { addToHistory } from '../services/historyService';
-import { AspectRatio } from '../types';
-import ApiKeySelector from './ApiKeySelector';
+import { AspectRatio, VideoResolution, VideoGenerationStyle, CameraMovement } from '../types';
 import { Loader } from './icons/Loader';
 import { SparklesIcon } from './icons/SparklesIcon';
-import { useAppContext } from '../context/AppContext';
-
-const cameraMovements = [
-  'Static Shot',
-  'Smooth Pan (Left to Right)',
-  'Smooth Pan (Right to Left)',
-  'Slow Tilt Up',
-  'Slow Tilt Down',
-  'Smooth Dolly Push-in',
-  'Smooth Dolly Pull-out',
-  'Tracking Shot (Follow Subject)',
-  'Crane Shot (Boom Up)',
-  'Crane Shot (Boom Down)',
-  'Low Angle Shot',
-  'High Angle Shot',
-  'Dutch Angle',
-  'Point of View (POV)',
-  'Zoom In (Slow)',
-  'Zoom Out (Slow)',
-  'Arc Shot (Clockwise)',
-  'Arc Shot (Counter-Clockwise)',
-];
+import ApiKeySelector from './ApiKeySelector';
+import { DownloadIcon } from './icons/DownloadIcon';
 
 const SceneCreator: React.FC = () => {
-  const { appState, setAppState } = useAppContext();
-  const {
-    imagePrompt, aspectRatio, visualStyle, isGeneratingImage, generatedImage,
-    videoPrompt, resolution, cameraMovement, isGeneratingVideo, generatedVideo, videoStatus, error
-  } = appState.sceneCreator;
+    const { appState, setAppState } = useAppContext();
+    const { prompt, aspectRatio, resolution, visualStyle, cameraMovement, isLoading, operation, error, statusMessage } = appState.sceneCreator;
 
-  const setState = (updates: Partial<typeof appState.sceneCreator>) => {
-    setAppState(prev => ({ ...prev, sceneCreator: { ...prev.sceneCreator, ...updates } }));
-  };
+    const setState = (updates: Partial<typeof appState.sceneCreator>) => {
+        setAppState(prev => ({ ...prev, sceneCreator: { ...prev.sceneCreator, ...updates } }));
+    };
 
-  const handleImageGeneration = async () => {
-    if (!imagePrompt) {
-      setState({ error: 'Image prompt cannot be empty.' });
-      return;
-    }
-    setState({ error: null, isGeneratingImage: true, generatedImage: null, generatedVideo: null });
-
-    // --- Start of Prompt Engineering ---
-    const stylePrefix = visualStyle === 'High-Res Cinematic'
-      ? 'An ultra-realistic 4K, HDR, 3D cinematic render, like an Unreal Engine 5 cutscene, creating an eye-catching, psychologically engaging image based on this narrative: '
-      : 'A stylized, low-poly 3D render with angular surfaces and sharp shadows, like a military simulation diagram, creating an eye-catching, tactical image based on this narrative: ';
-
-    const storytellingHook = ' Weave in a subtle emotional hook or a hint of a hidden motive related to themes of conflict, espionage, or high-stakes scenarios.';
+    const stopPolling = () => {
+        if (appState.sceneCreator.pollingIntervalId) {
+            clearInterval(appState.sceneCreator.pollingIntervalId);
+            setState({ pollingIntervalId: null });
+        }
+    };
     
-    const visibilityRule = " CRITICAL: Ensure all characters are fully and appropriately clothed for their role and context (e.g., suit, patient gown, tactical gear), avoiding any nudity.";
+    useEffect(() => {
+        return () => {
+            stopPolling();
+        };
+    }, [appState.sceneCreator.pollingIntervalId]);
 
-    const finalImagePrompt = stylePrefix + imagePrompt + storytellingHook + visibilityRule;
-    // --- End of Prompt Engineering ---
+    const handleGenerateVideo = async () => {
+        setState({ isLoading: true, error: null, operation: null, statusMessage: 'Initializing video generation...' });
+        try {
+            const op = await generateVideo(prompt, aspectRatio, resolution, visualStyle, cameraMovement);
+            setState({ operation: op, statusMessage: 'Video generation started. This may take a few minutes. Checking status...' });
 
-    try {
-      const imageUrl = await generateImage(finalImagePrompt, aspectRatio, 1);
-      // Save the user's original prompt to history for clarity
-      const newHistoryItem = { type: 'image' as const, prompt: imagePrompt, data: imageUrl, metadata: { aspectRatio, visualStyle } };
-      addToHistory(newHistoryItem);
-      
-      setAppState(prev => ({
-          ...prev,
-          sceneCreator: { ...prev.sceneCreator, generatedImage: imageUrl, isGeneratingImage: false },
-          history: { ...prev.history, items: [{ ...newHistoryItem, id: Date.now(), timestamp: new Date().toISOString() }, ...prev.history.items] }
-      }));
+            const intervalId = setInterval(async () => {
+                try {
+                    const updatedOp = await checkVideoStatus(op);
+                    setState({ operation: updatedOp });
 
-    } catch (err) {
-      setState({ error: err instanceof Error ? err.message : 'An unknown error occurred during image generation.', isGeneratingImage: false });
-    }
-  };
-  
-  const handleVideoGeneration = async () => {
-    if (!generatedImage || !videoPrompt) {
-        setState({ error: "An initial image and a video prompt are required." });
-        return;
-    }
-    setState({ error: null, isGeneratingVideo: true, generatedVideo: null });
-    
-    // --- Start of Prompt Engineering ---
-    const smoothContentRule = `Animate this scene with a cinematic '${cameraMovement}' camera movement to enhance drama and visual appeal. The action is: ${videoPrompt}.`;
-    const visibilityRule = " Ensure characters remain fully and appropriately clothed throughout the animation.";
-    const finalVideoPrompt = smoothContentRule + visibilityRule;
-    // --- End of Prompt Engineering ---
+                    if (updatedOp.done) {
+                        stopPolling();
+                        if (updatedOp.error) {
+                            setState({ error: updatedOp.error.message, isLoading: false, statusMessage: 'Generation failed.' });
+                        } else {
+                            const videoUri = updatedOp.response?.generatedVideos?.[0]?.video?.uri;
+                            if (videoUri) {
+                                const downloadLink = `${videoUri}&key=${process.env.API_KEY}`;
+                                const newHistoryItem = {
+                                    type: 'video' as const,
+                                    prompt,
+                                    data: downloadLink,
+                                    metadata: { aspectRatio, resolution, visualStyle, cameraMovement },
+                                    operation: updatedOp,
+                                };
+                                addToHistory(newHistoryItem);
+                                setAppState(prev => ({
+                                    ...prev,
+                                    sceneCreator: {
+                                        ...prev.sceneCreator,
+                                        isLoading: false,
+                                        statusMessage: 'Video generation complete!',
+                                    },
+                                    history: { ...prev.history, items: [{ ...newHistoryItem, id: Date.now(), timestamp: new Date().toISOString() }, ...prev.history.items] }
+                                }));
+                            } else {
+                                setState({ error: "Generation finished but no video URI was found.", isLoading: false, statusMessage: 'Error.' });
+                            }
+                        }
+                    } else {
+                         setState({ statusMessage: 'Still processing... The AI is working its magic.' });
+                    }
+                } catch (pollErr) {
+                    stopPolling();
+                    const errMsg = pollErr instanceof Error ? pollErr.message : "An unknown polling error occurred.";
+                    if (errMsg.includes("Requested entity was not found.")) {
+                        setState({ error: "API Key not found. Please re-select your API key and try again.", isLoading: false, statusMessage: 'Error.' });
+                    } else {
+                        setState({ error: errMsg, isLoading: false, statusMessage: 'Error during status check.' });
+                    }
+                }
+            }, 10000); // Poll every 10 seconds
+            setState({ pollingIntervalId: intervalId });
+        } catch (err) {
+            setState({ error: err instanceof Error ? err.message : 'Failed to start video generation', isLoading: false, statusMessage: 'Error.' });
+        }
+    };
 
-    try {
-        const videoDataUrl = await generateVideoFromImage(
-            generatedImage, 
-            finalVideoPrompt, 
-            aspectRatio, 
-            resolution,
-            (status) => setState({ videoStatus: status })
-        );
-        // Save the user's original prompt to history
-        const newHistoryItem = { type: 'video' as const, prompt: videoPrompt, data: videoDataUrl, metadata: { aspectRatio, resolution, visualStyle, cameraMovement, sourceImage: generatedImage } };
-        addToHistory(newHistoryItem);
-        
-        setAppState(prev => ({
-            ...prev,
-            sceneCreator: { ...prev.sceneCreator, generatedVideo: videoDataUrl, isGeneratingVideo: false, videoStatus: '' },
-            history: { ...prev.history, items: [{ ...newHistoryItem, id: Date.now(), timestamp: new Date().toISOString() }, ...prev.history.items] }
-        }));
+    const generatedVideoUrl = operation?.response?.generatedVideos?.[0]?.video?.uri ? `${operation.response.generatedVideos[0].video.uri}&key=${process.env.API_KEY}` : null;
 
-    } catch (err) {
-        setState({ error: err instanceof Error ? err.message : "An unknown error occurred during video generation.", isGeneratingVideo: false, videoStatus: '' });
-    }
-  };
+    const handleDownloadVideo = () => {
+        if (!generatedVideoUrl) return;
+        const link = document.createElement('a');
+        link.href = generatedVideoUrl;
+        link.download = `auroraframe-scene-${Date.now()}.mp4`;
+        // Fetch as blob to download correctly
+        fetch(generatedVideoUrl)
+            .then(res => res.blob())
+            .then(blob => {
+                const blobUrl = URL.createObjectURL(blob);
+                link.href = blobUrl;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(blobUrl);
+            });
+    };
 
-  return (
-    <div className="space-y-8">
-      <div className="text-center">
-        <h2 className="text-3xl font-bold text-white">Scene Creator</h2>
-        <p className="text-gray-400 mt-2">Craft your narrative, frame by frame. Start with a powerful image, then bring it to life.</p>
-      </div>
+    const visualStyles: VideoGenerationStyle[] = ['photorealistic', 'cinematic', 'vibrant', 'minimalist', 'documentary', 'vintage'];
+    const cameraMovements: CameraMovement[] = ['Static Shot', 'Pan Left', 'Pan Right', 'Tilt Up', 'Tilt Down', 'Zoom In', 'Zoom Out', 'Dolly Zoom', 'Tracking Shot'];
 
-      {error && <div className="bg-red-900/50 border border-red-500 text-red-300 p-4 rounded-lg">{error}</div>}
+    return (
+        <ApiKeySelector>
+            <div className="space-y-6">
+                <div className="text-center">
+                    <h2 className="text-3xl font-bold text-white">Scene Creator</h2>
+                    <p className="text-gray-400 mt-2">Bring your ideas to life. Generate stunning video scenes from a text prompt using Veo.</p>
+                </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Step 1: Image Generation */}
-        <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 space-y-4">
-            <div className="flex items-center gap-2">
-                <span className="bg-purple-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">1</span>
-                <h3 className="text-xl font-semibold">Generate the First Frame</h3>
-            </div>
-          <textarea
-            className="w-full p-3 bg-gray-700 rounded-md border border-gray-600 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-            rows={5}
-            value={imagePrompt}
-            onChange={(e) => setState({ imagePrompt: e.target.value })}
-            placeholder="Describe your character, action, and environment..."
-          />
-          <div className="flex flex-wrap items-center gap-4">
-             <label htmlFor="visual-style" className="font-medium">Visual Style:</label>
-            <select
-              id="visual-style"
-              title="Choose the overall aesthetic for the generation."
-              value={visualStyle}
-              onChange={(e) => setState({ visualStyle: e.target.value as 'High-Res Cinematic' | 'Low-Poly Tactical' })}
-              className="bg-gray-700 border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="High-Res Cinematic">High-Res Cinematic</option>
-              <option value="Low-Poly Tactical">Low-Poly Tactical</option>
-            </select>
-            <label htmlFor="aspect-ratio" className="font-medium">Aspect Ratio:</label>
-            <select
-              id="aspect-ratio"
-              title="Choose the width-to-height ratio for your image and video. Common formats are 16:9 for widescreen and 9:16 for mobile."
-              value={aspectRatio}
-              onChange={(e) => setState({ aspectRatio: e.target.value as AspectRatio })}
-              className="bg-gray-700 border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-purple-500"
-            >
-              <option value="16:9">16:9 (Landscape)</option>
-              <option value="9:16">9:16 (Portrait)</option>
-              <option value="1:1">1:1 (Square)</option>
-              <option value="4:3">4:3 (Classic TV)</option>
-              <option value="3:4">3:4 (Classic Portrait)</option>
-            </select>
-          </div>
-          <button
-            onClick={handleImageGeneration}
-            disabled={isGeneratingImage}
-            title="Creates a high-quality still image using the Imagen-4 model based on your prompt. This will be the first frame of your video."
-            className="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isGeneratingImage ? <Loader /> : <SparklesIcon />}
-            {isGeneratingImage ? 'Generating Image...' : 'Generate Image'}
-          </button>
-        </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4 bg-gray-800 p-6 rounded-lg border border-gray-700">
+                        <h3 className="text-xl font-semibold">1. Describe Your Scene</h3>
+                        <textarea
+                            className="w-full p-3 bg-gray-700 rounded-md border border-gray-600 focus:ring-2 focus:ring-purple-500"
+                            rows={5}
+                            value={prompt}
+                            onChange={e => setState({ prompt: e.target.value })}
+                            placeholder="e.g., An astronaut riding a horse on the moon..."
+                            disabled={isLoading}
+                        />
+                        
+                        <h3 className="text-xl font-semibold pt-2">2. Set the Style</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="font-medium block mb-1">Visual Style:</label>
+                                <select value={visualStyle} onChange={e => setState({ visualStyle: e.target.value as VideoGenerationStyle })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2 capitalize" disabled={isLoading}>
+                                    {visualStyles.map(style => <option key={style} value={style}>{style}</option>)}
+                                </select>
+                            </div>
+                             <div>
+                                <label className="font-medium block mb-1">Camera Movement:</label>
+                                <select value={cameraMovement} onChange={e => setState({ cameraMovement: e.target.value as CameraMovement })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2" disabled={isLoading}>
+                                    {cameraMovements.map(move => <option key={move} value={move}>{move}</option>)}
+                                </select>
+                            </div>
+                        </div>
 
-        {/* Display Image */}
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center justify-center min-h-[300px]">
-          {isGeneratingImage ? (
-            <div className="text-center space-y-2">
-                <Loader large={true} />
-                <p>Creating your scene...</p>
-            </div>
-          ) : generatedImage ? (
-            <img src={generatedImage} alt="Generated scene" className="max-h-96 w-auto rounded-md object-contain" />
-          ) : (
-            <div className="text-gray-500 text-center">
-              <p>Your generated image will appear here.</p>
-            </div>
-          )}
-        </div>
-      </div>
-      
-      {generatedImage && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 pt-8 border-t border-gray-700">
-          {/* Step 2: Video Generation */}
-          <div className="bg-gray-800 p-6 rounded-lg border border-gray-700 space-y-4">
-            <div className="flex items-center gap-2">
-                <span className="bg-purple-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold">2</span>
-                <h3 className="text-xl font-semibold">Animate the Scene</h3>
-            </div>
-            <ApiKeySelector>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                        <label htmlFor="video-resolution" className="block text-sm font-medium mb-1">Resolution:</label>
-                        <select
-                            id="video-resolution"
-                            value={resolution}
-                            onChange={(e) => setState({ resolution: e.target.value as '720p' | '1080p' })}
-                            className="bg-gray-700 border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-purple-500 w-full"
+                        <h3 className="text-xl font-semibold pt-2">3. Technical Settings</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="font-medium block mb-1">Aspect Ratio:</label>
+                                <select value={aspectRatio} onChange={e => setState({ aspectRatio: e.target.value as AspectRatio })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2" disabled={isLoading}>
+                                    <option value="16:9">16:9 (Landscape)</option>
+                                    <option value="9:16">9:16 (Portrait)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="font-medium block mb-1">Resolution:</label>
+                                <select value={resolution} onChange={e => setState({ resolution: e.target.value as VideoResolution })} className="w-full bg-gray-700 border border-gray-600 rounded-md p-2" disabled={isLoading}>
+                                    <option value="1080p">1080p</option>
+                                    <option value="720p">720p</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleGenerateVideo}
+                            disabled={isLoading}
+                            className="w-full flex justify-center items-center gap-2 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-600 mt-4"
                         >
-                            <option value="720p">720p (Fast)</option>
-                            <option value="1080p">1080p (HD)</option>
-                        </select>
+                            {isLoading ? <Loader /> : <SparklesIcon />} {isLoading ? 'Generating...' : 'Generate Scene'}
+                        </button>
+                        {error && <p className="text-red-400">{error}</p>}
                     </div>
-                    <div>
-                        <label htmlFor="camera-movement" className="block text-sm font-medium mb-1">Camera Movement:</label>
-                        <select
-                            id="camera-movement"
-                            value={cameraMovement}
-                            onChange={(e) => setState({ cameraMovement: e.target.value })}
-                            className="bg-gray-700 border border-gray-600 rounded-md p-2 focus:ring-2 focus:ring-purple-500 w-full"
-                        >
-                            {cameraMovements.map(move => (
-                                <option key={move} value={move}>{move}</option>
-                            ))}
-                        </select>
+                    <div className="space-y-4 bg-gray-800 p-6 rounded-lg border border-gray-700 flex flex-col">
+                        <h3 className="text-xl font-semibold">Generated Video</h3>
+                        <div className="bg-gray-900 rounded-lg flex flex-col items-center justify-center flex-grow min-h-[300px] p-4 space-y-4">
+                            {isLoading && (
+                                <div className="text-center">
+                                    <Loader large={true} />
+                                    <p className="text-lg font-semibold mt-4 text-gray-300">Generating Video</p>
+                                    <p className="text-gray-400 mt-2">{statusMessage}</p>
+                                    <p className="text-sm text-gray-500 mt-2">(This can take several minutes. Please be patient.)</p>
+                                </div>
+                            )}
+                            {!isLoading && generatedVideoUrl && (
+                                <>
+                                    <video src={generatedVideoUrl} controls autoPlay loop className="max-h-[400px] w-auto rounded-md" />
+                                    <button
+                                        onClick={handleDownloadVideo}
+                                        className="w-full max-w-xs mt-4 flex justify-center items-center gap-2 bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700"
+                                    >
+                                        <DownloadIcon />
+                                        Download Video
+                                    </button>
+                                </>
+                            )}
+                            {!isLoading && !generatedVideoUrl && (
+                                <p className="text-gray-500">Your generated video will appear here.</p>
+                            )}
+                        </div>
                     </div>
                 </div>
-                <textarea
-                  className="w-full p-3 bg-gray-700 rounded-md border border-gray-600 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition-colors"
-                  rows={4}
-                  value={videoPrompt}
-                  onChange={(e) => setState({ videoPrompt: e.target.value })}
-                  placeholder="Describe the action in the scene..."
-                />
-                <button
-                  onClick={handleVideoGeneration}
-                  disabled={isGeneratingVideo}
-                  title="Animates your generated image using the Veo model. Describe the desired camera movement and action in the prompt."
-                  className="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isGeneratingVideo ? <Loader /> : <SparklesIcon />}
-                  {isGeneratingVideo ? 'Generating Video...' : 'Generate Video'}
-                </button>
-              </div>
-            </ApiKeySelector>
-          </div>
-
-          {/* Display Video */}
-          <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 flex items-center justify-center min-h-[300px]">
-            {isGeneratingVideo ? (
-              <div className="text-center space-y-2">
-                <Loader large={true} />
-                <p>Animating your scene...</p>
-                {videoStatus && <p className="text-sm text-purple-400">{videoStatus}</p>}
-              </div>
-            ) : generatedVideo ? (
-              <video src={generatedVideo} controls autoPlay loop className="max-h-96 w-auto rounded-md" />
-            ) : (
-              <div className="text-gray-500 text-center">
-                <p>Your generated video will appear here.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+            </div>
+        </ApiKeySelector>
+    );
 };
 
 export default SceneCreator;

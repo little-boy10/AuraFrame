@@ -94,11 +94,16 @@ const History: React.FC = () => {
                                     <strong>Prompt:</strong> {item.prompt}
                                 </p>
                                 <div className="flex flex-wrap gap-2 text-xs mb-3">
+                                    {/* Media-specific metadata */}
                                     {item.metadata?.aspectRatio && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full">🖼️ {item.metadata.aspectRatio}</span>}
                                     {item.metadata?.resolution && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full">🎞️ {item.metadata.resolution}</span>}
                                     {item.metadata?.visualStyle && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full">🎨 {item.metadata.visualStyle}</span>}
                                     {item.metadata?.cameraMovement && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full">🎥 {item.metadata.cameraMovement}</span>}
                                     {item.metadata?.voice && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full" title={item.metadata.voice}>🔊 {item.metadata.voice.split('(')[0].trim()}</span>}
+                                    {/* Script-specific metadata */}
+                                    {item.metadata?.audience && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full" title={`Audience: ${item.metadata.audience}`}>👥 {item.metadata.audience}</span>}
+                                    {item.metadata?.tone && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full" title={`Tone: ${item.metadata.tone}`}>🎭 {item.metadata.tone}</span>}
+                                    {item.metadata?.platform && <span className="flex items-center gap-1 bg-gray-700 text-gray-300 px-2 py-1 rounded-full" title={`Platform: ${item.metadata.platform}`}>📺 {item.metadata.platform}</span>}
                                 </div>
                                 <button onClick={() => handleDelete(item.id)} className="mt-auto w-full bg-red-800/50 text-red-300 text-xs py-1 px-2 rounded hover:bg-red-700/50 transition-colors">
                                     Delete
